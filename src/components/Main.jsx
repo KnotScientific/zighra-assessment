@@ -1,46 +1,193 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-function loadScript(src, position, id) {
-  if (!position) {
-    return;
+const kinetic = { current: null };
+
+
+function makeTransRefId() {
+  var text = "";
+  var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-";
+
+  for (var i = 0; i < 37; i++) {
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
   }
 
-  const script = document.createElement("script");
-  script.setAttribute("async", "");
-  script.setAttribute("id", id);
-  script.type = "text/javascript";
-  script.src = src;
-  position.appendChild(script);
+  return text;
 }
 
-const autocompleteService = { current: null };
+function loginProfile(userName='React', text, callback) {
+
+  if (text == null) {
+      text = userName
+  }
+
+  var userData = {
+      name: userName,
+      uCode: userName
+  };
+  kinetic.current.getProfile(userData, function (error, profileData) {
+      if (error) {
+          callback((error.message));
+      } else {
+          localStorage.setItem("profileCode", profileData.data.profileCode);
+          localStorage.setItem("userName", userName);
+
+          $("#successMessage").show();
+          $("#txtUsername").disabled = true;
+      }
+  });
+};
+
+
+function makeTransaction() {
+  var userName = 'react';
+  var profileCode = localStorage.getItem("profileCode");
+  // var profileCode = "llkk";
+
+  if (profileCode == "" || userName == "") {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("userName");
+      localStorage.removeItem("profileCode");
+      alert("Your session has expired. Please login again");
+      window.location.href = "index.html";
+  } else {
+      kinetic.current.trackStop(function (trackData) {
+          var transRefId = makeTransRefId();
+          var body = {
+              gestureInfo: trackData,
+              profileCode: profileCode,
+              transRefId: transRefId
+          };
+
+          console.log('trackData ' + trackData)
+
+          kinetic.current.checkGesture(body, function (error, gestureData) {
+              if (error) {
+                  alert(JSON.stringify(error));
+              } else {
+                  localStorage.setItem("transRefId", gestureData.refId);
+                  localStorage.setItem("appRefId", gestureData.data.reqRefId);
+
+                  var score = gestureData.data.score;
+
+                  // Score greater than thresh. value
+                  if (score >= config.scoreThreshold) {
+                      reportAction('allow', gestureData, true);
+                      alert("Your mouse score is good: " + score);
+
+                  } else {
+                      // Score less than thres. value
+
+                      // Ask for PIN input
+                      var getPin = prompt("Your mouse score is not good " + score + "\nPlease enter your PIN", "");
+
+                      if (getPin == null || getPin == "") {
+                          // PIN cancelled
+                          reportAction('deny', gestureData, false);
+                      } else {
+
+                          // PIN entered
+                          if (getPin == config.defaultPin) {
+                              // PIN is correct
+                              reportAction('allow', gestureData, true);
+                          } else {
+                              // PIN is wrong
+                              reportAction('deny', gestureData, false);
+                          }
+                      }
+                  }
+              }
+          });
+      });
+  }
+}
 
 export default function Main() {
   const canvasRef = useRef(null);
 
   const [isPainting, setIsPainting] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
+
   const [mousePosition, setMousePosition] = useState(undefined);
 
-  const loaded = useRef(false);
+  var options = {
+    logging: false,
+    trackingTimeSensitivity: 10,
+    mouseTrackingElement: '#trackarea',
+    debug: true,
+    autoTracking: false,
+    appKey: 'appKey',
+    appSecret: 'appSecret',
+    trackingInterval: 60,
+    sensorPollingFrequency: 10,
+    packageId: "packageId",
+}
 
-  if (typeof window !== "undefined" && !loaded.current) {
-    if (!document.querySelector("#kinetic")) {
-      loadScript(
-        `../kinetic-sdk-1.0.1.min.js`,
-        document.querySelector("head"),
-        "kinetic"
-      );
+  const handleTrack = () => {
+    if(!isTracking){
+      kinetic.current.trackStart();
     }
+    else{
+      loginProfile('React', 'React', function (error, response) {
+        if (error) {
+            console.log(error);
+            alert(error);
+        } else {
 
-    loaded.current = true;
+            // Added inverse logic for confidence
+            var confidence = (100 - parseFloat(response.responseData.data.confidence));
+
+            if (response.responseData.data.score > config.loginThreshold) {
+                alert('Authentication Success. (Score = ' + response.responseData.data.score + ' and Confidence = ' + confidence + ')');
+                login(response.userName, function (error, response) {
+                    if (error) {
+                        console.log(error);
+                        alert(error);
+                    } else {
+                        window.location.href = "transaction.html";
+                    }
+                });
+            } else {
+                alert('Authentication Failed. (Score = ' + response.responseData.data.score + ' and Confidence = ' + confidence + ')');
+                //window.location.href = "index.html";
+                // Ask for PIN input
+                var getPin = prompt("Please enter your PIN", "");
+
+                if (getPin == null || getPin == "") {
+                    // PIN cancelled
+                    window.location.href = "index.html";
+                } else {
+
+                    // PIN entered
+                    if (getPin == config.defaultPin) {
+                        // PIN is correct
+                        login(response.userName, function (error, response) {
+                            if (error) {
+                                console.log(error);
+                                alert(error);
+                            } else {
+                                window.location.href = "transaction.html";
+                            }
+                        });
+                    } else {
+                        // PIN is wrong
+                        window.location.href = "index.html";
+                    }
+                }
+            }
+        }
+      });
+      makeTransaction();
+    }
+    setIsTracking((prev)=>!prev);
   }
 
   useEffect(() => {
-    if (!autocompleteService.current && window.ZFS) {
-      console.log("fh");
-      autocompleteService.current = new window.ZFS.KineticTracker();
+    console.log(window);
+    if (!kinetic.current && ZFS) {
+      kinetic.current = new ZFS.KineticTracker();
+      kinetic.current.init();
     }
-    if (!autocompleteService.current) {
+    if (!kinetic.current) {
       return undefined;
     }
   }, []);
@@ -137,8 +284,9 @@ export default function Main() {
     <div className="App">
       <h1>Establish your digital hand-written signature</h1>
       <h2>Do it 15 more times</h2>
+      <button onClick={handleTrack}>{isTracking?`Stop Tracking`:`Start Tracking`}</button>
       <div className="canvas-wrapper">
-        <canvas ref={canvasRef} id="myCanvas" width="400" height="100" />
+        <canvas id="#trackarea" className={isTracking?`tracking`:``} ref={canvasRef} width="400" height="100" />
         <hr className="divider-line" />
       </div>
     </div>
