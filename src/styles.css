@@ -1,0 +1,28 @@
+.App {
+  font-family: sans-serif;
+  text-align: center;
+}
+svg {
+  vertical-align: top;
+}
+.divider-line {
+  width: 350px;
+  position: absolute;
+  margin-top: 80px;
+}
+canvas {
+  background-color: transparent;
+  border-color: black;
+  border: 1px solid;
+  border-radius: 10px;
+  z-index: 10;
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='40' height='40' style='fill:black;font-size:24px;'><text y='100%'>✍️</text></svg>")
+      0 40,
+    auto;
+}
+.canvas-wrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
